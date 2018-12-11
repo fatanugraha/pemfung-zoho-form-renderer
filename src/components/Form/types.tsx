@@ -70,3 +70,13 @@ export interface IRuleFunctionArg {
 export interface AnyObject {
   [propName: string]: any;
 }
+
+export interface FormProps {
+  layout: ILayout;
+  initialValue: AnyObject;
+}
+
+export interface FormState {
+  map: AnyObject;
+  value: AnyObject;
+}

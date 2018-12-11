@@ -1,12 +1,12 @@
 import React from "react";
 
 import {
-  ILayout,
   AnyObject,
   IRuleFunction,
   IRuleFunctionArg,
   IFieldMaps,
-  IPickListValues,
+  FormProps,
+  FormState,
   IField,
   ISection,
   IRule
@@ -18,20 +18,11 @@ import {
   extractObjects,
   getFieldMapping
 } from "./helpers";
-import { all, merge } from "./functools";
+import { all, merge, compose } from "./functools";
 
+import { mapValues, mapVisibility } from "./mapfunctions";
 import { Section } from "./components";
 import { TextInput, Select, CheckBox } from "./widgets";
-
-interface FormProps {
-  layout: ILayout;
-  initialValue: AnyObject;
-}
-
-interface FormState {
-  map: AnyObject;
-  value: AnyObject;
-}
 
 export default class Form extends React.Component<FormProps, FormState> {
   fields: AnyObject;
@@ -45,78 +36,51 @@ export default class Form extends React.Component<FormProps, FormState> {
 
     const initialValue = getInitialValue(props.layout, props.initialValue || {});
 
+    const initialState = {
+      value: {},
+      map: constructMaps(props.layout)
+    };
     this.state = Object.keys(initialValue).reduce(
       (prevState, apiName) => this.applyNewValue(prevState, apiName, initialValue[apiName]),
-      {
-        value: {},
-        map: constructMaps(props.layout)
-      }
+      initialState
     );
   }
 
   getMapTargetObject = (map: IFieldMaps) => {
-    if (map.api_name) return this.fields[map.api_name];
+    if (map.api_name) {
+      return this.fields[map.api_name];
+    }
 
-    if (map.id) return this.objects[map.id];
+    if (map.id) {
+      return this.objects[map.id];
+    }
 
     return this.fields["default"];
   };
 
-  mapPickListValues = (prevState: FormState, targetField: IField, map: IFieldMaps) => {
-    if (!map.pick_list_values) {
-      return prevState;
-    }
-
-    const prevPickListValues = targetField.pick_list_values || [];
-
-    const nextPickListValues = map.pick_list_values || [];
-    const filteredKeys = merge(
-      nextPickListValues.map(value => ({ [value.actual_value]: value.display_value }))
-    );
-
-    return {
-      ...prevState,
-      map: {
-        ...prevState.map,
-        [targetField.id]: {
-          ...prevState.map[targetField.id],
-          pick_list_values: prevPickListValues.filter(
-            (choice: IPickListValues) => !!filteredKeys[choice.actual_value]
-          )
-        }
-      }
-    };
-  };
-
-  mapVisibility = (prevState: FormState, targetField: IField, map: IFieldMaps) => {
-    if (map.visible === undefined) {
-      return prevState;
-    }
-
-    return {
-      ...prevState,
-      map: {
-        ...prevState.map,
-        [targetField.id]: { ...prevState.map[targetField.id], visible: map.visible }
-      }
-    };
-  };
-
   applyObjectMapping = (prevState: FormState, map: IFieldMaps) => {
     const targetField = this.getMapTargetObject(map);
-    const mapFunctions = [this.mapPickListValues, this.mapVisibility];
 
-    return mapFunctions.reduce((prevState, func) => func(prevState, targetField, map), prevState);
+    const applyObjectMap = compose(
+      mapValues(targetField, map),
+      mapVisibility(targetField, map)
+    );
+
+    return applyObjectMap(prevState);
   };
 
   applyNewValue = (prevState: FormState, apiName: string, value: any) => {
     const field = this.fields[apiName];
-    const maps = getFieldMapping(field, value);
+    const nextState = {
+      ...prevState,
+      value: {
+        ...prevState.value,
+        [apiName]: value
+      }
+    };
 
-    return maps.reduce(
-      (prevState, map) => this.applyObjectMapping(prevState, map),
-      this.applyRules({ ...prevState, value: { ...prevState.value, [apiName]: value } }, [apiName])
-    );
+    const maps = [...getFieldMapping(field, value), ...this.getRuleMaps(nextState, [apiName])];
+    return maps.reduce((prevState, map) => this.applyObjectMapping(prevState, map), nextState);
   };
 
   argValueGetter = (state: FormState) => (arg: IRuleFunctionArg) => {
@@ -160,40 +124,31 @@ export default class Form extends React.Component<FormProps, FormState> {
 
   evaluateRule = (rule: IRule, state: FormState) => {
     if (this.evaluateCondition({ func: "and", args: rule.conditions }, state)) {
+      console.log({ rule, rejected: false });
       return rule.fulfilled;
     } else {
+      console.log({ rule, rejected: true });
       return rule.rejected;
     }
   };
 
-  applyEffect = (func: IRuleFunction, prevState: FormState) => {
+  getRuleEffectMap = (func: IRuleFunction): IFieldMaps => {
     const effects: AnyObject = {
       show: (args: Array<IRuleFunctionArg>) => {
         const { section, field } = args[0];
         if (field) {
-          return this.applyObjectMapping(prevState, {
-            api_name: this.fields[field].api_name,
-            visible: true
-          });
+          return { api_name: this.fields[field].api_name, visible: true };
         } else if (section) {
-          return this.applyObjectMapping(prevState, {
-            id: this.objects[section].id,
-            visible: true
-          });
+          return { id: this.objects[section].id, visible: true };
         }
       },
       hide: (args: Array<IRuleFunctionArg>) => {
         const { section, field } = args[0];
+
         if (field) {
-          return this.applyObjectMapping(prevState, {
-            api_name: this.fields[field].api_name,
-            visible: false
-          });
+          return { api_name: this.fields[field].api_name, visible: false };
         } else if (section) {
-          return this.applyObjectMapping(prevState, {
-            id: this.objects[section].id,
-            visible: false
-          });
+          return { id: this.objects[section].id, visible: false };
         }
       }
     };
@@ -201,16 +156,16 @@ export default class Form extends React.Component<FormProps, FormState> {
     return effects[func.func](func.args);
   };
 
-  applyRules = (prevState: FormState, updatedFields: Array<any>) =>
-    this.props.layout.rules.reduce((prevState, rule) => {
-      if (this.shouldEvaluateConditions(rule.conditions, updatedFields)) {
-        return this.evaluateRule(rule, prevState).reduce(
-          (prevState, effect) => this.applyEffect(effect, prevState),
-          prevState
-        );
-      }
-      return prevState;
-    }, prevState);
+  getRuleMaps = (prevState: FormState, updatedFields: Array<any>) =>
+    this.props.layout.rules
+      .filter(rule => this.shouldEvaluateConditions(rule.conditions, updatedFields))
+      .reduce(
+        (prevMaps, rule) => [
+          ...prevMaps,
+          ...this.evaluateRule(rule, prevState).map(effect => this.getRuleEffectMap(effect))
+        ],
+        [] as Array<IFieldMaps>
+      );
 
   handleFieldChange = (apiName: string) => (value: any) => {
     this.setState(prevState => this.applyNewValue(prevState, apiName, value));
