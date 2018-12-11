@@ -1,3 +1,6 @@
+import React from "react";
+import { IField } from "../types";
+
 export interface IWidgetProps {
   readonly: boolean;
   field_label: string;

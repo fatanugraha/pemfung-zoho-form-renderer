@@ -1,4 +1,5 @@
 import React from "react";
+
 import {
   ILayout,
   AnyObject,
@@ -7,7 +8,8 @@ import {
   IFieldMaps,
   IPickListValues,
   IField,
-  ISection
+  ISection,
+  IRule
 } from "./types";
 import {
   constructMaps,
@@ -17,7 +19,8 @@ import {
   getFieldMapping
 } from "./helpers";
 import { all, merge } from "./functools";
-import { Card, Elevation } from "@blueprintjs/core";
+
+import { Section } from "./components";
 import { TextInput, Select, CheckBox } from "./widgets";
 
 interface FormProps {
@@ -164,8 +167,12 @@ export default class Form extends React.Component<FormProps, FormState> {
     return evaluator[func.func](func.args);
   };
 
-  evaluateConditions = (conditions: Array<IRuleFunction>, state: FormState) => {
-    return this.evaluateCondition({ func: "and", args: conditions }, state);
+  evaluateRule = (rule: IRule, state: FormState) => {
+    if (this.evaluateCondition({ func: "and", args: rule.conditions }, state)) {
+      return rule.fulfilled;
+    } else {
+      return rule.rejected;
+    }
   };
 
   applyEffect = (func: IRuleFunction, prevState: FormState) => {
@@ -204,24 +211,15 @@ export default class Form extends React.Component<FormProps, FormState> {
   };
 
   applyRules = (prevState: FormState, updatedFields: Array<any>) => {
-    const { rules } = this.props.layout;
-
-    let nextState = prevState;
-    for (const { conditions, fulfilled, rejected } of rules) {
-      if (this.shouldEvaluateConditions(conditions, updatedFields)) {
-        if (this.evaluateConditions(conditions, prevState)) {
-          fulfilled.forEach(effect => {
-            nextState = this.applyEffect(effect, nextState);
-          });
-        } else {
-          rejected.forEach(effect => {
-            nextState = this.applyEffect(effect, nextState);
-          });
-        }
+    return this.props.layout.rules.reduce((prevState, rule) => {
+      if (this.shouldEvaluateConditions(rule.conditions, updatedFields)) {
+        return this.evaluateRule(rule, prevState).reduce(
+          (prevState, effect) => this.applyEffect(effect, prevState),
+          prevState
+        );
       }
-    }
-
-    return nextState;
+      return prevState;
+    }, prevState);
   };
 
   handleFieldChange = (apiName: string) => (value: any) => {
@@ -282,12 +280,11 @@ export default class Form extends React.Component<FormProps, FormState> {
     const { id, name, fields } = section;
 
     return (
-      <Card elevation={Elevation.TWO} style={{ marginBottom: 24 }} key={id}>
-        <h4 className="bp3-heading">{name}</h4>
+      <Section title={name} key={id}>
         {fields
           .filter(field => this.getObjectMap(field.id).visible)
           .map(field => this.renderField(field))}
-      </Card>
+      </Section>
     );
   }
 

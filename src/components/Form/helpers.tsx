@@ -61,7 +61,8 @@ export function getInitialValue(layout: ILayout, initialValue: AnyObject) {
   );
 }
 
-export const hasDataType = (dataType: string) => (field: IField) => field.data_type === dataType;
+export const hasDataType = (dataType: string) => (field: IField): boolean =>
+  field.data_type === dataType;
 
 const hasPickListValues = hasDataType("picklist");
 
