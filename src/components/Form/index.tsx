@@ -17,7 +17,7 @@ import {
   getFieldMapping
 } from "./helpers";
 import { all, merge } from "./functools";
-import { Button, Card, Elevation, FormGroup, InputGroup } from "@blueprintjs/core";
+import { Card, Elevation } from "@blueprintjs/core";
 import { TextInput, Select, CheckBox } from "./widgets";
 
 interface FormProps {
@@ -86,7 +86,7 @@ export default class Form extends React.Component<FormProps, FormState> {
   };
 
   mapVisibility = (prevState: FormState, targetField: IField, map: IFieldMaps) => {
-    if (!map.visible) {
+    if (map.visible === undefined) {
       return prevState;
     }
 
@@ -125,9 +125,6 @@ export default class Form extends React.Component<FormProps, FormState> {
     );
   };
 
-  /***
-   * --------
-   */
   argValueGetter = (state: FormState) => (arg: IRuleFunctionArg) => {
     if (arg.value) {
       return arg.value;
@@ -197,7 +194,7 @@ export default class Form extends React.Component<FormProps, FormState> {
         } else if (section) {
           return this.applyObjectMapping(prevState, {
             id: this.objects[section].id,
-            visible: true
+            visible: false
           });
         }
       }

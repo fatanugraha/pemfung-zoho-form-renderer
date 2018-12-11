@@ -39,7 +39,6 @@ export default class CheckBox extends PureComponent<IWidgetProps> {
   };
 
   transformToInternalValue = (value: Array<any>): AnyObject => {
-    console.log(value);
     return (value && merge(value.map(item => ({ [item]: true })))) || {};
   };
 
