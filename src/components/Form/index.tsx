@@ -97,10 +97,7 @@ export default class Form extends React.Component<FormProps, FormState> {
       ...prevState,
       map: {
         ...prevState.map,
-        [targetField.id]: {
-          ...prevState.map[targetField.id],
-          visible: map.visible
-        }
+        [targetField.id]: { ...prevState.map[targetField.id], visible: map.visible }
       }
     };
   };
@@ -118,13 +115,7 @@ export default class Form extends React.Component<FormProps, FormState> {
 
     return maps.reduce(
       (prevState, map) => this.applyObjectMapping(prevState, map),
-      this.applyRules(
-        {
-          ...prevState,
-          value: { ...prevState.value, [apiName]: value }
-        },
-        [apiName]
-      )
+      this.applyRules({ ...prevState, value: { ...prevState.value, [apiName]: value } }, [apiName])
     );
   };
 
@@ -210,8 +201,8 @@ export default class Form extends React.Component<FormProps, FormState> {
     return effects[func.func](func.args);
   };
 
-  applyRules = (prevState: FormState, updatedFields: Array<any>) => {
-    return this.props.layout.rules.reduce((prevState, rule) => {
+  applyRules = (prevState: FormState, updatedFields: Array<any>) =>
+    this.props.layout.rules.reduce((prevState, rule) => {
       if (this.shouldEvaluateConditions(rule.conditions, updatedFields)) {
         return this.evaluateRule(rule, prevState).reduce(
           (prevState, effect) => this.applyEffect(effect, prevState),
@@ -220,7 +211,6 @@ export default class Form extends React.Component<FormProps, FormState> {
       }
       return prevState;
     }, prevState);
-  };
 
   handleFieldChange = (apiName: string) => (value: any) => {
     this.setState(prevState => this.applyNewValue(prevState, apiName, value));
