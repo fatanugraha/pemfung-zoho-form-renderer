@@ -20,6 +20,7 @@ import {
 } from "./helpers";
 import { all, merge, compose } from "./functools";
 
+import { evaluateRule, shouldEvaluateConditions } from "./evaluators";
 import { mapValues, mapVisibility } from "./mapfunctions";
 import { Section } from "./components";
 import { TextInput, Select, CheckBox } from "./widgets";
@@ -34,12 +35,13 @@ export default class Form extends React.Component<FormProps, FormState> {
     this.objects = extractObjects(props.layout);
     this.fields = extractFields(props.layout);
 
-    const initialValue = getInitialValue(props.layout, props.initialValue || {});
-
     const initialState = {
       value: {},
       map: constructMaps(props.layout)
     };
+
+    const initialValue = getInitialValue(props.layout, props.initialValue || {});
+
     this.state = Object.keys(initialValue).reduce(
       (prevState, apiName) => this.applyNewValue(prevState, apiName, initialValue[apiName]),
       initialState
@@ -83,55 +85,6 @@ export default class Form extends React.Component<FormProps, FormState> {
     return maps.reduce((prevState, map) => this.applyObjectMapping(prevState, map), nextState);
   };
 
-  argValueGetter = (state: FormState) => (arg: IRuleFunctionArg) => {
-    if (arg.value) {
-      return arg.value;
-    } else if (arg.field) {
-      return state.value[arg.field];
-    }
-
-    return undefined;
-  };
-
-  shouldEvaluateConditions = (conditions: Array<IRuleFunction>, updatedFields: Array<any>) => {
-    return this.shouldEvaluateCondition({ func: "and", args: conditions }, updatedFields);
-  };
-
-  shouldEvaluateCondition = (func: IRuleFunction, updatedFields: Array<any>) => {
-    const evaluator: AnyObject = {
-      is: (args: Array<IRuleFunctionArg>) =>
-        args.filter(arg => arg.field).some(arg => updatedFields.indexOf(arg.field) >= 0),
-      or: (args: Array<IRuleFunction>) =>
-        args.some(arg => this.shouldEvaluateCondition(arg, updatedFields)),
-      and: (args: Array<IRuleFunction>) =>
-        args.every(arg => this.shouldEvaluateCondition(arg, updatedFields))
-    };
-
-    return evaluator[func.func](func.args);
-  };
-
-  evaluateCondition = (func: IRuleFunction, state: FormState) => {
-    const getValue = this.argValueGetter(state);
-
-    const evaluator: AnyObject = {
-      is: (args: Array<IRuleFunctionArg>) => getValue(args[0]) === getValue(args[1]),
-      or: (args: Array<IRuleFunction>) => args.some(arg => this.evaluateCondition(arg, state)),
-      and: (args: Array<IRuleFunction>) => args.every(arg => this.evaluateCondition(arg, state))
-    };
-
-    return evaluator[func.func](func.args);
-  };
-
-  evaluateRule = (rule: IRule, state: FormState) => {
-    if (this.evaluateCondition({ func: "and", args: rule.conditions }, state)) {
-      console.log({ rule, rejected: false });
-      return rule.fulfilled;
-    } else {
-      console.log({ rule, rejected: true });
-      return rule.rejected;
-    }
-  };
-
   getRuleEffectMap = (func: IRuleFunction): IFieldMaps => {
     const effects: AnyObject = {
       show: (args: Array<IRuleFunctionArg>) => {
@@ -156,13 +109,13 @@ export default class Form extends React.Component<FormProps, FormState> {
     return effects[func.func](func.args);
   };
 
-  getRuleMaps = (prevState: FormState, updatedFields: Array<any>) =>
+  getRuleMaps = (state: FormState, updatedFields: Array<any>) =>
     this.props.layout.rules
-      .filter(rule => this.shouldEvaluateConditions(rule.conditions, updatedFields))
+      .filter(rule => shouldEvaluateConditions(rule.conditions, updatedFields))
       .reduce(
         (prevMaps, rule) => [
           ...prevMaps,
-          ...this.evaluateRule(rule, prevState).map(effect => this.getRuleEffectMap(effect))
+          ...evaluateRule(state, rule).map(effect => this.getRuleEffectMap(effect))
         ],
         [] as Array<IFieldMaps>
       );
@@ -183,11 +136,12 @@ export default class Form extends React.Component<FormProps, FormState> {
 
   isFieldFilled = all(this.isFieldNotEmptyList, this.isFieldNotEmptyString, this.isFieldNotNull);
 
-  isFormValid = () =>
-    Object.keys(this.fields)
+  isFormValid = () => {
+    return Object.keys(this.fields)
       .filter(this.isFieldRequired)
       .filter(this.isFieldVisible)
-      .every(apiName => this.isFieldFilled(apiName));
+      .every(this.isFieldFilled);
+  };
 
   getObjectMap = (id: string) => {
     return { ...this.objects[id], ...this.state.map[id] };
