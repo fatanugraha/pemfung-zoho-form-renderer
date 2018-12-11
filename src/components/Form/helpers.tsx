@@ -39,11 +39,13 @@ function getFieldInitialValue(section: ISection, initialValue: AnyObject) {
       if (!!field.pick_list_values && field.pick_list_values.length > 0) {
         if (field.json_type == "jsonarray")
           return {
-            [field.api_name]: [field.pick_list_values[0].actual_value]
+            [field.api_name]: initialValue[field.api_name] || [
+              field.pick_list_values[0].actual_value
+            ]
           };
 
         return {
-          [field.api_name]: field.pick_list_values[0].actual_value
+          [field.api_name]: initialValue[field.api_name] || field.pick_list_values[0].actual_value
         };
       }
       return {

@@ -8,8 +8,7 @@ import {
   FormProps,
   FormState,
   IField,
-  ISection,
-  IRule
+  ISection
 } from "./types";
 import {
   constructMaps,
@@ -18,12 +17,12 @@ import {
   extractObjects,
   getFieldMapping
 } from "./helpers";
-import { all, merge, compose } from "./functools";
 
-import { evaluateRule, shouldEvaluateConditions } from "./evaluators";
-import { mapValues, mapVisibility } from "./mapfunctions";
 import { Section } from "./components";
 import { TextInput, Select, CheckBox } from "./widgets";
+import { all, compose } from "./functools";
+import { evaluateRule, shouldEvaluateConditions } from "./evaluators";
+import { mapValues, mapVisibility } from "./mapfunctions";
 
 export default class Form extends React.Component<FormProps, FormState> {
   fields: AnyObject;
@@ -41,12 +40,31 @@ export default class Form extends React.Component<FormProps, FormState> {
     };
 
     const initialValue = getInitialValue(props.layout, props.initialValue || {});
-
+    console.log(initialValue);
     this.state = Object.keys(initialValue).reduce(
       (prevState, apiName) => this.applyNewValue(prevState, apiName, initialValue[apiName]),
       initialState
     );
   }
+
+  isFieldRequired = (apiName: string) => this.fields[apiName].required;
+
+  isFieldVisible = (apiName: string) => this.fields[apiName].visible;
+
+  isFieldNotEmptyList = (apiName: string) => this.state.value[apiName] !== [];
+
+  isFieldNotEmptyString = (apiName: string) => this.state.value[apiName] !== "";
+
+  isFieldNotNull = (apiName: string) => !!this.state.value[apiName];
+
+  isFieldFilled = all(this.isFieldNotEmptyList, this.isFieldNotEmptyString, this.isFieldNotNull);
+
+  isFormValid = () => {
+    return Object.keys(this.fields)
+      .filter(this.isFieldRequired)
+      .filter(this.isFieldVisible)
+      .every(this.isFieldFilled);
+  };
 
   getMapTargetObject = (map: IFieldMaps) => {
     if (map.api_name) {
@@ -109,38 +127,20 @@ export default class Form extends React.Component<FormProps, FormState> {
     return effects[func.func](func.args);
   };
 
-  getRuleMaps = (state: FormState, updatedFields: Array<any>) =>
-    this.props.layout.rules
+  getRuleMaps(state: FormState, updatedFields: Array<any>) {
+    return this.props.layout.rules
       .filter(rule => shouldEvaluateConditions(rule.conditions, updatedFields))
       .reduce(
-        (prevMaps, rule) => [
-          ...prevMaps,
-          ...evaluateRule(state, rule).map(effect => this.getRuleEffectMap(effect))
-        ],
+        (prevMaps, rule) => {
+          const ruleMaps = evaluateRule(state, rule).map(effect => this.getRuleEffectMap(effect));
+          return [...prevMaps, ...ruleMaps];
+        },
         [] as Array<IFieldMaps>
       );
+  }
 
   handleFieldChange = (apiName: string) => (value: any) => {
     this.setState(prevState => this.applyNewValue(prevState, apiName, value));
-  };
-
-  isFieldRequired = (apiName: string) => this.fields[apiName].required;
-
-  isFieldVisible = (apiName: string) => this.fields[apiName].visible;
-
-  isFieldNotEmptyList = (apiName: string) => this.state.value[apiName] !== [];
-
-  isFieldNotEmptyString = (apiName: string) => this.state.value[apiName] !== "";
-
-  isFieldNotNull = (apiName: string) => !!this.state.value[apiName];
-
-  isFieldFilled = all(this.isFieldNotEmptyList, this.isFieldNotEmptyString, this.isFieldNotNull);
-
-  isFormValid = () => {
-    return Object.keys(this.fields)
-      .filter(this.isFieldRequired)
-      .filter(this.isFieldVisible)
-      .every(this.isFieldFilled);
   };
 
   getObjectMap = (id: string) => {
